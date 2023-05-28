@@ -1,0 +1,407 @@
+---
+title: "R Notebook"
+output: rmarkdown::github_document
+---
+The Diabetes prediction dataset is a collection of medical and demographic data from patients, along with their diabetes status (positive or negative). The data includes features such as age, gender, body mass index (BMI), hypertension, heart disease, smoking history, HbA1c level, and blood glucose level. This dataset can be used to build machine learning models to predict diabetes in patients based on their medical history and demographic information. This can be useful for healthcare professionals in identifying patients who may be at risk of developing diabetes and in developing personalized treatment plans. Additionally, the dataset can be used by researchers to explore the relationships between various medical and demographic factors and the likelihood of developing diabetes.
+ source: https://www.kaggle.com/datasets/iammustafatz/diabetes-prediction-dataset
+
+```{r}
+rm(list=ls())
+setwd("C:/Users/49162/OneDrive/Desktop/All_documents/Kaggle/diabetes_pred/R_script")
+ data_1 <-read.csv("diabetes_prediction_dataset.csv")
+ 
+
+```
+
+## Loading packages
+```{r}
+library(tidyverse)
+library(plotly)
+library(tidymodels)
+library(reshape2)
+
+```
+
+## Looking at the data
+```{r}
+dim(data_1)
+names(data_1)
+```
+
+
+```{r}
+str(data_1)
+```
+
+
+## Converting data to tibble
+```{r}
+data_1 <- as_tibble(data_1)
+head(data_1)
+```
+
+## Searching for missing numbers
+```{r}
+apply(is.na(data_1), 2, sum)
+```
+
+
+## Some basic summary stats.
+```{r}
+summary(data_1)
+```
+
+## looking into variables with character vectors
+```{r}
+unique(data_1[["gender"]])
+
+unique(data_1[["smoking_history"]])
+```
+
+
+## Some visualization
+```{r, val=TRUE}
+data_plot <- data_1 %>%
+              select(diabetes, gender,smoking_history,
+                    heart_disease,age, hypertension, bmi,
+                    blood_glucose_level)%>%
+                    mutate(diab_diagnose =
+                      ifelse(diabetes==0,
+                       "No_diabetes", "diabetes"))
+
+fig <- data_1 %>% count(diabetes)
+fig <- fig%>% plot_ly(x=~diabetes,y=~n, type = "bar" )
+fig <- fig %>% layout(title =  "diabetess
+                      versus non diabetes patients")
+fig
+
+#p <- ggplot(data_1, aes(x=diabetes)) + 
+#       geom_bar() 
+#ggplotly(p)
+
+
+
+```
+
+
+```{r}
+fig <- plot_ly(data_1, labels = ~gender, 
+            values = ~diabetes, type = 'pie')
+fig <- fig %>% layout(title =
+      '% of diabetes 
+      patients by Gender')
+fig
+
+
+female <- data_1 %>% filter(gender == "Female") %>%
+      count()
+male <- data_1 %>% filter(gender == "Male") %>%
+      count()
+total_gender <- bind_cols(female, male)
+colnames(total_gender) <- c("female", "male")
+total_gender
+```
+
+
+
+
+
+```{r}
+box_data <- data_1 %>% select(age, bmi, blood_glucose_level)
+
+data_long1 <- melt(box_data)                                   
+
+
+ggplot(data_long1, aes(x = variable, y = value)) +         
+     geom_boxplot()
+
+
+```
+```{r}
+   
+ggplot(data_1, aes(x=age)) + 
+geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="yellow")
+
+ggplot(data_1, aes(x=bmi)) + 
+geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="yellow")
+
+ggplot(data_1, aes(x=blood_glucose_level)) + 
+geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="yellow")
+```
+
+
+```{r fig.align = "center", fig.width = 10}
+p<- ggplot(data_plot) + geom_bar(mapping = 
+          aes(diab_diagnose, 
+              fill=gender), position="dodge")
+ggplotly(p)
+```
+
+```{r}
+p<- ggplot(data_plot) + geom_bar(mapping = 
+          aes(diab_diagnose, 
+              fill=smoking_history), position="dodge")
+ggplotly(p)
+
+```
+
+```{r fig.align = "center" , fig.width=8}
+
+
+p1 <- ggplot(data=data_plot) + geom_point(mapping = aes( age,bmi,  color=smoking_history))+
+  facet_wrap(~ smoking_history)
+
+ggplotly(p1)
+
+```
+
+
+
+## Converting Smooking history and gender to dummies
+```{r}
+
+data_1 <- data_1 %>% mutate(Smoke_ever = ifelse(
+                            smoking_history== "ever" , 1, 0),
+                 smoke_current = ifelse(
+                           smoking_history == "current" ,1, 0),
+                  smoke_not_current = ifelse(
+                           smoking_history == "not current",1,0),
+                  smoke_fomer = ifelse(
+                           smoking_history== "former",1, 0),
+                  smoke_never = ifelse(
+                          smoking_history == "never", 1, 0
+        
+))
+
+
+data_1 <- data_1 %>% mutate(gender_female = ifelse(
+                           gender == "Female" ,1, 0),
+                            )
+
+
+data_1 <- data_1%>% select(!c(smoking_history, gender))
+
+```
+
+
+
+```{r}
+
+str(data_1)
+
+
+#data_1$gender <- as.numeric(data_1$gender)
+#data_1$smoking_history <- as.numeric(data_1$smoking_history)#
+#data_1$diabetes <- as.numeric(data_1$diabetes)
+```
+
+
+## Correlation plot
+```{r, fig.align='centre', fig.width=10}
+corrr <- round(cor(data_1),2)
+ggcorrplot::ggcorrplot(corrr, lab =T, type="upper")
+dim(data_1)
+
+
+
+```
+
+
+## Model  Logistics regression for inference
+```{r}
+
+names(data_1)
+
+data_1$diabetes <- as.factor(data_1$diabetes)
+
+mod1 <- logistic_reg() %>% 
+  set_engine("glm") %>% set_mode("classification")%>%
+    fit(diabetes ~., data = data_1)
+
+mod1 %>% extract_fit_engine() %>% summary()
+
+```
+
+
+## Splitting data for prediction
+```{r}
+set.seed(1234)
+data_split <- initial_split(data_1, prop=0.7, 
+                            strata = "diabetes")
+
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+dim(train_data)
+dim(test_data)
+
+
+
+
+
+```
+
+## Mod 1 : Logistics regression classifier
+```{r}
+
+train_mod <- logistic_reg()%>%
+     set_engine("glm")  %>% set_mode("classification")%>%
+         fit(diabetes ~., data = train_data)
+
+
+test_mod <- predict(train_mod,
+                    new_data = test_data,
+                    type="class")
+
+
+
+#conf_mod <- predict(train_mod,
+#                    new_data = test_data,
+#                    type="conf_int")
+
+
+results_diab <- test_data %>%
+           select(diabetes) %>% bind_cols(test_mod)
+
+ conf_mat(results_diab, truth = diabetes,
+         estimate = .pred_class)
+ 
+
+accuracy(results_diab, truth = diabetes,
+         estimate = .pred_class)
+  
+#sens(results_diab, truth = diabetes,
+#        estimate = .pred_class)
+
+```
+
+## Decision tree classifier
+```{r}
+
+
+tree_mod <- decision_tree() %>%
+      set_engine("rpart") %>%
+         set_mode("classification")%>%
+              fit(diabetes ~., data = train_data)
+  
+tree_mod %>% extract_fit_engine() %>% summary
+  
+
+tree_pred <- predict(tree_mod, new_data = test_data,
+          type= "class")
+
+tree_conf <- test_data %>% select(diabetes)%>%
+          bind_cols(tree_pred)
+
+conf_mat(tree_conf, truth = diabetes,
+         estimate = .pred_class)
+accuracy(tree_conf, truth = diabetes,
+         estimate = .pred_class)
+
+
+```
+
+
+
+
+## Random forest classifier
+```{r}
+library(randomForest)
+
+rf_model <- 
+  rand_forest() %>%
+  set_engine("ranger") %>%
+  set_mode("classification")%>%
+  fit(diabetes ~., data = train_data)
+
+
+rf_mod_test <- predict(rf_model,
+                    new_data = test_data,
+                    type="class")
+
+results_rf <- test_data%>%select(diabetes)%>%
+             bind_cols(rf_mod_test)
+
+
+conf_mat(results_rf , truth = diabetes,
+         estimate = .pred_class)
+ 
+
+accuracy(results_rf , truth = diabetes,
+         estimate = .pred_class)
+
+#sens(results_rf , truth = diabetes,
+#         estimate = .pred_class)
+
+#test_data %>% select(diabetes) %>%
+#         bind_cols(predict(rf_model, test_data))
+
+
+
+```
+
+
+### XG boost classifier
+```{r}
+
+library(xgboost)
+#parsnip_addin()
+
+boost_mod <-
+  boost_tree() %>%
+  set_engine('xgboost') %>%
+  set_mode('classification') %>%
+  fit(diabetes ~., data = train_data)
+
+bst_pred <- predict(boost_mod,
+                    new_data = test_data,
+                    type = "class")
+
+bost_con <- test_data %>% select(diabetes)%>%
+            bind_cols(bst_pred)
+
+
+
+conf_mat(bost_con,truth = diabetes,
+         estimate = .pred_class)
+
+accuracy(bost_con,truth = diabetes,
+         estimate = .pred_class)
+
+#sen_an <- sens(bost_con,truth = diabetes,
+#         estimate = .pred_class)
+
+
+
+```
+
+
+## comparing accuracy of all the models
+```{r}
+
+ log_reg <- accuracy(results_diab, truth = diabetes,
+         estimate = .pred_class)%>% select(.estimate)
+d_tree <- accuracy(tree_conf, truth = diabetes,
+         estimate = .pred_class)%>% select(.estimate)
+ 
+r_forest <- accuracy(results_rf , truth = diabetes,
+         estimate = .pred_class)%>% select(.estimate)
+xgboost <- accuracy(bost_con,truth = diabetes,
+         estimate = .pred_class) %>% select(.estimate)
+
+comp_mod <-round(bind_cols(log_reg,d_tree,
+                           r_forest,xgboost),4)
+colnames(comp_mod) = c("Log_Reg", "D-tree",
+                       "R_forest",
+                       "Xgboost")
+
+
+head(comp_mod)
+```
+
+
+
+
